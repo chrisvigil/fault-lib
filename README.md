@@ -99,6 +99,9 @@ cargo run -p fault_lib --features testutils --example tst_app -- -c src/fault_li
 The `tst_app` reporter loops 20 times over every fault in the catalog,
 alternating between `Failed` and `Passed` with a 200 ms delay.
 
+For C/C++ applications, see the [reporter C ABI](src/fault_ffi/README.md) and
+[C++17 example](examples/cpp_reporter/README.md).
+
 ### 4️⃣ Run Tests
 
 ```sh

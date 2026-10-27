@@ -33,5 +33,14 @@ jobs:
       cargo-locked: true
       cargo-test-args: "--workspace --all-targets"
       bazel-enabled: true
-      bazel-build-targets: "//src/... //tests/..."
+      bazel-build-targets: "//src/... //tests/... //examples/cpp_reporter"
       bazel-test-targets: "//src/... //tests/..."
+
+  ffi-header:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install header generator
+        run: cargo +stable install cbindgen --version 0.29.2 --locked
+      - name: Check generated C header
+        run: bash src/fault_ffi/tools/generate_header.sh --check

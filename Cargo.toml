@@ -16,6 +16,7 @@ members = [
   "src/dfm_bin",
   "src/dfm_lib",
   "src/fault_lib",
+  "src/fault_ffi",
   "src/xtask",
   "tests/integration",
 ]

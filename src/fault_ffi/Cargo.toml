@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Contributors to Eclipse OpenSOVD (see CONTRIBUTORS)
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+
+[package]
+name = "fault_ffi"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+authors.workspace = true
+
+[lib]
+crate-type = ["rlib", "staticlib", "cdylib"]
+
+[dependencies]
+common = { path = "../common" }
+fault_lib = { path = "../fault_lib" }
+
+[dev-dependencies]
+dfm_lib = { path = "../dfm_lib" }
+tempfile = "3.20"
+serde_json.workspace = true
+
+# Workspace unsafe_code=forbid cannot be overridden at a module boundary.
+# Keep the same baseline here, but permit audited unsafe in boundary.rs only.
+[lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+similar_names = "allow"
+indexing_slicing = "deny"
+unwrap_used = "deny"
+arithmetic_side_effects = "deny"
+clone_on_ref_ptr = "warn"
+separated_literal_suffix = "deny"
+unimplemented = "deny"
+expect_used = "deny"
+std_instead_of_core = "deny"
+std_instead_of_alloc = "deny"
+alloc_instead_of_core = "deny"
+cast_possible_truncation = "warn"

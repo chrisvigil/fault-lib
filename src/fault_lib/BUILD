@@ -10,6 +10,8 @@
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
+exports_files(["tests/data/hvac_fault_catalog.json"])
+
 filegroup(
     name = "fault_lib_srcs",
     srcs = glob(["src/**/*.rs"]),
@@ -25,11 +27,11 @@ rust_library(
         "//src/common",
         "@score_fault_lib_crates//:iceoryx2",
         "@score_fault_lib_crates//:iceoryx2-bb-container",
-        "@score_fault_lib_crates//:tracing",
         "@score_fault_lib_crates//:serde",
         "@score_fault_lib_crates//:serde_json",
         "@score_fault_lib_crates//:sha2",
         "@score_fault_lib_crates//:thiserror",
+        "@score_fault_lib_crates//:tracing",
     ],
 )
 
@@ -44,11 +46,11 @@ rust_library(
         "//src/common",
         "@score_fault_lib_crates//:iceoryx2",
         "@score_fault_lib_crates//:iceoryx2-bb-container",
-        "@score_fault_lib_crates//:tracing",
         "@score_fault_lib_crates//:serde",
         "@score_fault_lib_crates//:serde_json",
         "@score_fault_lib_crates//:sha2",
         "@score_fault_lib_crates//:thiserror",
+        "@score_fault_lib_crates//:tracing",
     ],
 )
 
@@ -65,16 +67,16 @@ rust_test(
     },
     deps = [
         "//src/common",
-        "@score_fault_lib_crates//:tracing-subscriber",
         "@score_fault_lib_crates//:iceoryx2",
         "@score_fault_lib_crates//:iceoryx2-bb-container",
-        "@score_fault_lib_crates//:tracing",
         "@score_fault_lib_crates//:mockall",
         "@score_fault_lib_crates//:serde",
         "@score_fault_lib_crates//:serde_json",
         "@score_fault_lib_crates//:serial_test",
         "@score_fault_lib_crates//:sha2",
         "@score_fault_lib_crates//:thiserror",
+        "@score_fault_lib_crates//:tracing",
+        "@score_fault_lib_crates//:tracing-subscriber",
     ],
 )
 
@@ -86,10 +88,10 @@ rust_binary(
         ":fault_lib",
         "//src/common",
         "@score_fault_lib_crates//:clap",
-        "@score_fault_lib_crates//:tracing-subscriber",
         "@score_fault_lib_crates//:iceoryx2",
         "@score_fault_lib_crates//:iceoryx2-bb-container",
         "@score_fault_lib_crates//:tracing",
+        "@score_fault_lib_crates//:tracing-subscriber",
     ],
 )
 
@@ -100,11 +102,11 @@ rust_binary(
     deps = [
         ":fault_lib_testutils",
         "//src/common",
-        "@score_fault_lib_crates//:tracing-subscriber",
         "@score_fault_lib_crates//:iceoryx2-bb-container",
-        "@score_fault_lib_crates//:tracing",
         "@score_fault_lib_crates//:serde",
         "@score_fault_lib_crates//:serde_json",
         "@score_fault_lib_crates//:sha2",
+        "@score_fault_lib_crates//:tracing",
+        "@score_fault_lib_crates//:tracing-subscriber",
     ],
 )
