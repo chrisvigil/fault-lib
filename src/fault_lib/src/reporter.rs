@@ -144,6 +144,7 @@ impl ReporterApi for Reporter {
     }
 
     fn publish(&mut self, path: &str, record: FaultRecord) -> Result<(), SinkError> {
+        crate::fault_manager_sink::validate_path(path)?;
         let now = Instant::now();
 
         // Reset debouncer on lifecycle stage transitions (e.g. Passed → Failed)
@@ -576,6 +577,39 @@ mod design_tests {
             2,
             "Events after min_count should pass through"
         );
+    }
+
+    #[test]
+    fn invalid_paths_do_not_advance_debounce() {
+        let descriptor = stub_descriptor(
+            FaultId::Numeric(2),
+            to_static_short_string("CountWindow").unwrap(),
+            Some(DebounceMode::CountWithinWindow {
+                min_count: 2,
+                window: Duration::from_secs(60).into(),
+            }),
+            None,
+        );
+        let sink = Arc::new(RecordingSink::new());
+        let mut reporter = make_reporter_with_descriptor(Arc::clone(&sink) as _, descriptor);
+        let record = reporter.create_record(LifecycleStage::Failed);
+        let long_path = "x".repeat(129);
+        for path in ["../bad", "hvac\0bad", "hväc", "", long_path.as_str()] {
+            assert!(matches!(
+                reporter.publish(path, record.clone()),
+                Err(SinkError::BadDescriptor(_))
+            ));
+            assert_eq!(reporter.last_stage, LifecycleStage::NotTested);
+        }
+        assert_eq!(sink.count(), 0);
+        reporter.publish("hvac", record.clone()).unwrap();
+        assert_eq!(
+            sink.count(),
+            0,
+            "invalid reports must not count toward debounce"
+        );
+        reporter.publish("hvac", record).unwrap();
+        assert_eq!(sink.count(), 1);
     }
 
     /// `HoldTime` suppresses until the configured duration has elapsed since first event.

@@ -139,6 +139,13 @@ fn fixture() -> FaultCatalogConfig {
         fault.reporter_side_debounce = None;
         fault.manager_side_debounce = None;
     }
+    let mut debounced = config.faults.first().unwrap().clone();
+    debounced.id = FaultId::Numeric(0x7002);
+    debounced.reporter_side_debounce = Some(common::debounce::DebounceMode::CountWithinWindow {
+        min_count: 2,
+        window: Duration::from_secs(60).into(),
+    });
+    config.faults.push(debounced);
     let mut uuid = config.faults.first().unwrap().clone();
     uuid.id = FaultId::Uuid([7; 16]);
     config.faults.push(uuid);
@@ -269,6 +276,18 @@ fn scenario_child() {
             fl_reporter_create_numeric(context, 0x7001, &raw const config, &raw mut reporter),
             FL_OK
         );
+        let mut debounced = ptr::null_mut();
+        assert_eq!(
+            fl_reporter_create_numeric(context, 0x7002, &raw const config, &raw mut debounced),
+            FL_OK
+        );
+        for path in ["../bad", "hvac\0bad", "hväc"] {
+            assert_eq!(
+                fl_reporter_publish(debounced, path.into(), FL_STAGE_FAILED, ptr::null(), 0),
+                FL_INVALID_ARGUMENT
+            );
+        }
+        assert_eq!(fl_reporter_destroy(debounced), FL_OK);
         let mut uuid_reporter = ptr::null_mut();
         assert_eq!(
             fl_reporter_create_uuid(

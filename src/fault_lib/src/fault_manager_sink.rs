@@ -265,6 +265,25 @@ fn is_valid_path(path: &str) -> bool {
         .all(|c| c.is_alphanumeric() || c == '/' || c == '.' || c == '-' || c == '_')
 }
 
+/// Validate before mutating reporter debounce state or enqueueing for IPC.
+pub(crate) fn validate_path(path: &str) -> Result<(), SinkError> {
+    if path.len() > MAX_PATH_LENGTH {
+        return Err(SinkError::BadDescriptor(alloc::borrow::Cow::Owned(
+            format!(
+                "path too long: {} bytes (max {})",
+                path.len(),
+                MAX_PATH_LENGTH
+            ),
+        )));
+    }
+    if !path.is_ascii() || !is_valid_path(path) {
+        return Err(SinkError::BadDescriptor(alloc::borrow::Cow::Borrowed(
+            "invalid path format",
+        )));
+    }
+    Ok(())
+}
+
 /// API to be used by the modules of the fault-lib which need to communicate with
 /// Diagnostic Fault Manager. This trait shall never become public
 impl FaultSinkApi for FaultManagerSink {
@@ -290,21 +309,7 @@ impl FaultSinkApi for FaultManagerSink {
     /// Paths exceeding 128 bytes are rejected with [`SinkError::BadDescriptor`]
     /// rather than silently truncated.
     fn publish(&self, path: &str, record: FaultRecord) -> Result<(), SinkError> {
-        // Validate path before IPC
-        if path.len() > MAX_PATH_LENGTH {
-            return Err(SinkError::BadDescriptor(alloc::borrow::Cow::Owned(
-                format!(
-                    "path too long: {} bytes (max {})",
-                    path.len(),
-                    MAX_PATH_LENGTH
-                ),
-            )));
-        }
-        if !is_valid_path(path) {
-            return Err(SinkError::BadDescriptor(alloc::borrow::Cow::Borrowed(
-                "invalid path format",
-            )));
-        }
+        validate_path(path)?;
 
         let long_path = to_static_long_string(path).map_err(|_| {
             SinkError::BadDescriptor(alloc::borrow::Cow::Owned(format!(
