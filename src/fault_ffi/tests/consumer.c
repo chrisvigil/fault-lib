@@ -11,6 +11,7 @@
  */
 
 #include "fault_ffi.h"
+#include "abi_v1_contract.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -19,7 +20,11 @@
     fprintf(stderr, "check failed at line %d: %s\n", __LINE__, #condition); return 1; \
 } } while (0)
 
-int main(void) {
+static fl_string text(const char *value) {
+    return (fl_string){(const uint8_t *)value, strlen(value)};
+}
+
+int main(int argc, char **argv) {
     fl_context *context = NULL;
     fl_reporter *reporter = NULL;
     size_t required = 0;
@@ -44,5 +49,30 @@ int main(void) {
           == FL_INVALID_ARGUMENT);
     CHECK(fl_context_destroy(NULL) == FL_OK);
     CHECK(fl_reporter_destroy(NULL) == FL_OK);
+    if (argc == 2) {
+        /* The integration harness supplies a small, self-contained catalog. */
+        uint8_t json[65536];
+        FILE *file = fopen(argv[1], "rb");
+        CHECK(file != NULL);
+        const size_t length = fread(json, 1, sizeof(json), file);
+        CHECK(!ferror(file) && feof(file));
+        CHECK(fclose(file) == 0);
+        CHECK(fl_context_create((fl_string){json, length}, &context) == FL_OK);
+        fl_metadata defaults = {text("application"), text("c_consumer")};
+        fl_reporter_config config = {0};
+        config.struct_size = sizeof(config);
+        config.source_entity = text("c_consumer");
+        config.lifecycle_phase = FL_PHASE_RUNNING;
+        config.default_metadata = &defaults;
+        config.default_metadata_len = 1;
+        CHECK(fl_reporter_create_text(context, text("hvac.blower.speed_sensor_mismatch"),
+                                      &config, &reporter) == FL_OK);
+        /* Input data is copied, and the reporter retains the Rust API owner. */
+        memset(json, 0, length);
+        defaults.value = text("changed");
+        CHECK(fl_context_destroy(context) == FL_OK);
+        CHECK(fl_reporter_publish(reporter, text("hvac"), FL_STAGE_FAILED, NULL, 0) == FL_OK);
+        CHECK(fl_reporter_destroy(reporter) == FL_OK);
+    }
     return 0;
 }

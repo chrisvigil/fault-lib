@@ -100,7 +100,7 @@ The `tst_app` reporter loops 20 times over every fault in the catalog,
 alternating between `Failed` and `Passed` with a 200 ms delay.
 
 For C/C++ applications, see the [reporter C ABI](src/fault_ffi/README.md) and
-[C++17 example](examples/cpp_reporter/README.md).
+[C++17 bindings and example](https://github.com/eclipse-opensovd/cpp-bindings).
 
 ### 4️⃣ Run Tests
 

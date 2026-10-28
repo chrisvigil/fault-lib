@@ -52,13 +52,6 @@ cc_library(
     deps = [":fault_ffi_static"],
 )
 
-cc_library(
-    name = "cpp_api",
-    hdrs = ["include/fault_ffi.hpp"],
-    visibility = ["//visibility:public"],
-    deps = [":c_api"],
-)
-
 rust_test(
     name = "tests",
     size = "small",
@@ -68,7 +61,10 @@ rust_test(
 cc_test(
     name = "c_consumer",
     size = "small",
-    srcs = ["tests/consumer.c"],
+    srcs = [
+        "tests/abi_v1_contract.h",
+        "tests/consumer.c",
+    ],
     copts = [
         "-std=c11",
         "-Wall",
@@ -76,42 +72,31 @@ cc_test(
         "-Werror",
         "-pedantic",
     ],
+    visibility = ["//visibility:public"],
     deps = [":c_api"],
-)
-
-cc_test(
-    name = "cpp_consumer",
-    size = "small",
-    srcs = ["tests/consumer.cpp"],
-    copts = [
-        "-std=c++17",
-        "-Wall",
-        "-Wextra",
-        "-Werror",
-        "-pedantic",
-    ],
-    deps = [":cpp_api"],
 )
 
 rust_test(
     name = "e2e",
     size = "small",
     srcs = ["tests/e2e.rs"],
+    compile_data = ["//src/fault_lib:tests/data/hvac_fault_catalog.json"],
     crate_root = "tests/e2e.rs",
     data = [
         ":c_consumer",
-        ":cpp_consumer",
-        "//examples/cpp_reporter",
-        "//src/fault_lib:tests/data/hvac_fault_catalog.json",
+        ":fault_ffi_shared",
     ],
     edition = "2024",
     env = {
-        "CARGO_MANIFEST_DIR": "src/fault_ffi",
         "FAULT_FFI_C_CONSUMER": "$(rootpath :c_consumer)",
-        "FAULT_FFI_CPP_CONSUMER": "$(rootpath :cpp_consumer)",
-        "FAULT_FFI_EXAMPLE": "$(rootpath //examples/cpp_reporter)",
+        "FAULT_FFI_SHARED_LIBRARY": "$(rootpath :fault_ffi_shared)",
     },
-    tags = ["requires-linux"],
+    tags = [
+        "exclusive",  # The scenarios use process-global default IPC service names.
+        "requires-linux",
+    ],
+    # Downstream language bindings can reuse the native/DFM conformance harness.
+    visibility = ["//visibility:public"],
     deps = [
         ":fault_ffi",
         "//src/common",

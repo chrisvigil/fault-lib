@@ -33,7 +33,7 @@ jobs:
       cargo-locked: true
       cargo-test-args: "--workspace --all-targets"
       bazel-enabled: true
-      bazel-build-targets: "//src/... //tests/... //examples/cpp_reporter"
+      bazel-build-targets: "//src/... //tests/..."
       bazel-test-targets: "//src/... //tests/..."
 
   ffi-header:

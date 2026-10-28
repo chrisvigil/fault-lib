@@ -58,9 +58,54 @@ fn source_root() -> PathBuf {
     PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
 }
 
-fn compile(source: &Path, output: &Path, cpp: bool) {
-    let compiler = env::var(if cpp { "CXX" } else { "CC" })
-        .unwrap_or_else(|_| if cpp { "c++" } else { "cc" }.into());
+fn shared_library() -> PathBuf {
+    env::var_os("FAULT_FFI_SHARED_LIBRARY").map_or_else(
+        || {
+            env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join("libfault_ffi.so")
+        },
+        PathBuf::from,
+    )
+}
+
+fn check_shared_exports() {
+    // Frozen v1 export set. Catch internal symbols escaping as well as missing API.
+    // -g excludes local TLS symbols present in some linkers' dynamic symbol tables.
+    let output = Command::new("nm")
+        .args(["-D", "-g", "--defined-only", "--format=posix"])
+        .arg(shared_library())
+        .output()
+        .expect("GNU nm (binutils) is required for the ABI tests");
+    let stdout = String::from_utf8(output.stdout.clone()).unwrap();
+    success(output);
+    let mut symbols: Vec<_> = stdout
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .collect();
+    symbols.sort_unstable();
+    assert_eq!(
+        symbols,
+        [
+            "fl_abi_version",
+            "fl_context_catalog_id",
+            "fl_context_create",
+            "fl_context_destroy",
+            "fl_last_error_message",
+            "fl_reporter_create_numeric",
+            "fl_reporter_create_text",
+            "fl_reporter_create_uuid",
+            "fl_reporter_destroy",
+            "fl_reporter_publish",
+        ],
+        "shared-library ABI exports changed; review compatibility"
+    );
+}
+
+fn compile(source: &Path, output: &Path) {
+    let compiler = env::var("CC").unwrap_or_else(|_| "cc".into());
     let libraries = env::current_exe().unwrap().parent().unwrap().to_path_buf();
     assert!(
         libraries.join("libfault_ffi.so").exists(),
@@ -68,13 +113,7 @@ fn compile(source: &Path, output: &Path, cpp: bool) {
     );
     success(
         Command::new(compiler)
-            .args([
-                if cpp { "-std=c++17" } else { "-std=c11" },
-                "-Wall",
-                "-Wextra",
-                "-Werror",
-                "-pedantic",
-            ])
+            .args(["-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic"])
             .arg(source)
             .arg("-I")
             .arg(source_root().join("include"))
@@ -84,56 +123,63 @@ fn compile(source: &Path, output: &Path, cpp: bool) {
             .args(["-lfault_ffi", "-o"])
             .arg(output)
             .output()
-            .expect("a native C/C++ compiler is required for the ABI tests"),
+            .expect("a native C compiler is required for the ABI tests"),
     );
 }
 
 #[test]
 fn native_consumers_and_ipc_scenarios() {
+    check_shared_exports();
     let dir = tempfile::tempdir().unwrap();
-    // Bazel supplies hermetically compiled consumers. Cargo tests compile and
-    // dynamically link the same sources against Cargo's cdylib.
-    let (c, cpp, example) = if let Ok(example) = env::var("FAULT_FFI_EXAMPLE") {
-        (
-            PathBuf::from(env::var("FAULT_FFI_C_CONSUMER").unwrap()),
-            PathBuf::from(env::var("FAULT_FFI_CPP_CONSUMER").unwrap()),
-            PathBuf::from(example),
-        )
+    // Bazel supplies a compiled C consumer. Cargo compiles the same source
+    // against its cdylib. This repository needs no C++ wrapper or compiler.
+    let c = if let Ok(c) = env::var("FAULT_FFI_C_CONSUMER") {
+        PathBuf::from(c)
     } else {
         let c = dir.path().join("consumer_c");
-        let cpp = dir.path().join("consumer_cpp");
-        let example = dir.path().join("cpp_reporter");
-        compile(&source_root().join("tests/consumer.c"), &c, false);
-        compile(&source_root().join("tests/consumer.cpp"), &cpp, true);
-        compile(
-            &source_root().join("../../examples/cpp_reporter/main.cpp"),
-            &example,
-            true,
-        );
-        (c, cpp, example)
+        compile(&source_root().join("tests/consumer.c"), &c);
+        c
     };
     let c = fs::canonicalize(c).unwrap();
-    let cpp = fs::canonicalize(cpp).unwrap();
-    let example = fs::canonicalize(example).unwrap();
-    success(Command::new(c).output().unwrap());
-    success(Command::new(&cpp).output().unwrap());
+    success(Command::new(&c).output().unwrap());
+    // Optional downstream executables implement the fixture protocol documented
+    // in README.md. Only paths cross the repository boundary, never source deps.
+    let cpp = env::var("FAULT_FFI_CPP_CONSUMER").ok();
+    let example = env::var("FAULT_FFI_EXAMPLE").ok();
+    assert_eq!(
+        cpp.is_some(),
+        example.is_some(),
+        "supply both downstream executables"
+    );
+    let downstream = cpp.zip(example).map(|(cpp, example)| {
+        (
+            fs::canonicalize(cpp).unwrap(),
+            fs::canonicalize(example).unwrap(),
+        )
+    });
+    if let Some((cpp, _)) = &downstream {
+        success(Command::new(cpp).output().unwrap());
+    }
     for scenario in ["offline", "mismatch", "positive"] {
-        success(
-            Command::new(env::current_exe().unwrap())
-                .args(["--exact", "scenario_child", "--nocapture"])
-                .env("FAULT_FFI_SCENARIO", scenario)
-                .env("FAULT_FFI_EXAMPLE", &example)
-                .env("FAULT_FFI_CPP_CONSUMER", &cpp)
-                .output()
-                .unwrap(),
-        );
+        let mut child = Command::new(env::current_exe().unwrap());
+        child
+            .args(["--exact", "scenario_child", "--nocapture"])
+            .env("FAULT_FFI_SCENARIO", scenario)
+            .env("FAULT_FFI_C_CONSUMER", &c);
+        if let Some((cpp, example)) = &downstream {
+            child
+                .env("FAULT_FFI_CPP_CONSUMER", cpp)
+                .env("FAULT_FFI_EXAMPLE", example);
+        }
+        success(child.output().unwrap());
     }
 }
 
 fn fixture() -> FaultCatalogConfig {
-    let path = source_root().join("../fault_lib/tests/data/hvac_fault_catalog.json");
-    let mut config: FaultCatalogConfig =
-        serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+    let mut config: FaultCatalogConfig = serde_json::from_str(include_str!(
+        "../../fault_lib/tests/data/hvac_fault_catalog.json"
+    ))
+    .unwrap();
     // Keep tests fast; the repository's numeric HVAC example has a 60s debounce.
     for fault in &mut config.faults {
         fault.reporter_side_debounce = None;
@@ -423,11 +469,21 @@ fn scenario_child() {
     let catalog_path = dir.path().join("catalog.json");
     fs::write(&catalog_path, json).unwrap();
     success(
-        Command::new(env::var("FAULT_FFI_CPP_CONSUMER").unwrap())
+        Command::new(env::var("FAULT_FFI_C_CONSUMER").unwrap())
             .arg(&catalog_path)
             .output()
             .unwrap(),
     );
+    let query = dfm.query_api();
+    wait_for(|| {
+        query
+            .get_fault("hvac", "hvac.blower.speed_sensor_mismatch")
+            .is_ok_and(|(_, env)| env.get("application").is_some_and(|v| v == "c_consumer"))
+    });
+    let Ok(cpp) = env::var("FAULT_FFI_CPP_CONSUMER") else {
+        return;
+    };
+    success(Command::new(cpp).arg(&catalog_path).output().unwrap());
     let query = dfm.query_api();
     wait_for(|| {
         query

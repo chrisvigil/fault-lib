@@ -236,8 +236,10 @@ pub extern "C" fn fl_abi_version() -> u32 {
 }
 
 /// Initialize once per process using catalog JSON. DFM must already be running
-/// with the same catalog. On failure, `*out_context` is NULL. Failed initialization
-/// can be retried; successful initialization cannot be reset by destroying handles.
+/// with the same catalog. On failure, `*out_context` is NULL. Catalog/transport
+/// failures can be retried; successful initialization cannot be reset by destroying
+/// handles. A contained panic does not guarantee rollback of process-wide state.
+/// A shared library must remain loaded until process exit, including after failure.
 ///
 /// # Safety
 /// Input spans must be readable for the call. `out_context` must be writable,
@@ -403,6 +405,7 @@ pub unsafe extern "C" fn fl_reporter_publish(
 /// Destroy a context; NULL is harmless. Live reporters keep the API alive.
 /// This does not reset process-wide initialization or guarantee delivery of queued events.
 /// The handle is consumed even if an internal error is returned.
+/// Destruction does not establish worker quiescence or permit shared-library unloading.
 ///
 /// # Safety
 /// context must be NULL or a live handle returned by `fl_context_create`, not already
@@ -420,6 +423,7 @@ pub unsafe extern "C" fn fl_context_destroy(context: *mut FlContext) -> FlStatus
 
 /// Destroy a reporter; NULL is harmless. Does not guarantee delivery of queued events.
 /// The handle is consumed even if an internal error is returned.
+/// Destruction does not establish worker quiescence or permit shared-library unloading.
 ///
 /// # Safety
 /// reporter must be NULL or a live handle returned by a reporter creation function,
@@ -529,6 +533,30 @@ mod tests {
             );
             assert_eq!(required, 1);
         }
+    }
+
+    #[test]
+    fn panicking_payload_destructor_is_contained() {
+        struct PanickingDrop;
+        impl Drop for PanickingDrop {
+            fn drop(&mut self) {
+                // The nested payload would also panic if the guard dropped it.
+                std::panic::panic_any(Self);
+            }
+        }
+
+        assert_eq!(
+            guard(|| std::panic::panic_any(PanickingDrop)),
+            FL_INTERNAL_ERROR
+        );
+        LAST_ERROR.with(|slot| assert!(slot.borrow().contains("panic contained")));
+    }
+
+    #[test]
+    fn opaque_owners_support_cross_thread_transfer() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<FlContext>();
+        assert_send_sync::<FlReporter>();
     }
 
     #[test]

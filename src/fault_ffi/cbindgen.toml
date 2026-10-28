@@ -26,6 +26,22 @@ header = """
  * terms of the Apache License Version 2.0 which is available at
  * https://www.apache.org/licenses/LICENSE-2.0
  */
+
+/*
+ * Same-process C ABI: caller and library must use the same target C ABI, including
+ * pointer width and alignment. These structs are call arguments, not IPC payloads.
+ * Link one reporter runtime per process. A shared library must remain loaded until
+ * process exit after any use, even after failed initialization or handle destruction:
+ * worker shutdown is best-effort and thread-local destructors can still need its code.
+ *
+ * Serialize operations and destruction on each handle. Independent handles may be
+ * used on different threads. Inputs must not be modified during a call. Functions
+ * are not async-signal-safe. No C++ exceptions or Rust container layouts cross it.
+ *
+ * With panic=unwind, boundary panics return FL_INTERNAL_ERROR. This contains
+ * unwinding, not state rollback or worker-thread recovery. Aborts (including OOM,
+ * panic=abort, or a double panic during unwinding) cannot be converted to statuses.
+ */
 """
 
 [export.rename]

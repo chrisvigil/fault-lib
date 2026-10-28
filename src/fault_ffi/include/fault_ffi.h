@@ -10,6 +10,22 @@
  * https://www.apache.org/licenses/LICENSE-2.0
  */
 
+/*
+ * Same-process C ABI: caller and library must use the same target C ABI, including
+ * pointer width and alignment. These structs are call arguments, not IPC payloads.
+ * Link one reporter runtime per process. A shared library must remain loaded until
+ * process exit after any use, even after failed initialization or handle destruction:
+ * worker shutdown is best-effort and thread-local destructors can still need its code.
+ *
+ * Serialize operations and destruction on each handle. Independent handles may be
+ * used on different threads. Inputs must not be modified during a call. Functions
+ * are not async-signal-safe. No C++ exceptions or Rust container layouts cross it.
+ *
+ * With panic=unwind, boundary panics return FL_INTERNAL_ERROR. This contains
+ * unwinding, not state rollback or worker-thread recovery. Aborts (including OOM,
+ * panic=abort, or a double panic during unwinding) cannot be converted to statuses.
+ */
+
 
 #ifndef FAULT_FFI_H
 #define FAULT_FFI_H
@@ -140,8 +156,10 @@ uint32_t fl_abi_version(void);
 
 /*
  Initialize once per process using catalog JSON. DFM must already be running
- with the same catalog. On failure, `*out_context` is NULL. Failed initialization
- can be retried; successful initialization cannot be reset by destroying handles.
+ with the same catalog. On failure, `*out_context` is NULL. Catalog/transport
+ failures can be retried; successful initialization cannot be reset by destroying
+ handles. A contained panic does not guarantee rollback of process-wide state.
+ A shared library must remain loaded until process exit, including after failure.
 
  # Safety
  Input spans must be readable for the call. `out_context` must be writable,
@@ -221,6 +239,7 @@ fl_status fl_reporter_publish(struct fl_reporter *reporter,
  Destroy a context; NULL is harmless. Live reporters keep the API alive.
  This does not reset process-wide initialization or guarantee delivery of queued events.
  The handle is consumed even if an internal error is returned.
+ Destruction does not establish worker quiescence or permit shared-library unloading.
 
  # Safety
  context must be NULL or a live handle returned by `fl_context_create`, not already
@@ -231,6 +250,7 @@ fl_status fl_context_destroy(struct fl_context *context);
 /*
  Destroy a reporter; NULL is harmless. Does not guarantee delivery of queued events.
  The handle is consumed even if an internal error is returned.
+ Destruction does not establish worker quiescence or permit shared-library unloading.
 
  # Safety
  reporter must be NULL or a live handle returned by a reporter creation function,
