@@ -81,6 +81,7 @@ crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
 crate.from_cargo(
     name = "score_fault_lib_crates",
     cargo_lockfile = "//:Cargo.lock",
+    lockfile = "//:crates.lock",
     manifests = [
         "//:Cargo.toml",
     ],

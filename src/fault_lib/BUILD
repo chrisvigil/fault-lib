@@ -10,7 +10,10 @@
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
-exports_files(["tests/data/hvac_fault_catalog.json"])
+exports_files([
+    "tests/data/hvac_fault_catalog.json",
+    "tests/data/ivi_fault_catalog.json",
+])
 
 filegroup(
     name = "fault_lib_srcs",
@@ -98,6 +101,7 @@ rust_binary(
 rust_binary(
     name = "catalog_and_reporter",
     srcs = ["examples/catalog_and_reporter.rs"],
+    data = ["tests/data/hvac_fault_catalog.json"],
     edition = "2024",
     deps = [
         ":fault_lib_testutils",
