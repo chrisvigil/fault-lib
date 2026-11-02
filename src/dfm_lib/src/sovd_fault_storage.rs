@@ -372,6 +372,8 @@ impl SovdFaultStateStorage for KvsSovdFaultStateStorage {
         );
         kvs.set_value(path, states)
             .map_err(|e| StorageError::Backend(format!("{e:?}")))?;
+        kvs.flush()
+            .map_err(|e| StorageError::Backend(format!("{e:?}")))?;
         Ok(())
     }
 
